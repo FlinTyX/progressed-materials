@@ -1,5 +1,5 @@
 module.exports = {
-  newMount(b, n){
+  newMount(n){
     /*Notes: Too lazy to do charging, or continuous.*/
     const mount = {
       x: 0,
@@ -13,7 +13,8 @@ module.exports = {
       elevation: 1,
       
       reloadTime: 30,
-      bullet: b,
+      ammoTypes: null,
+      maxAmmo: 30,
       ammoPerShot: 1,
       range: 80,
       rotateSpeed: 5,
@@ -59,8 +60,8 @@ module.exports = {
     return mount;
   },
   newMultiTurret(name, mounts, ammoItem, mainBullet, rangeTime, fadeTime, title){
-    const amount = mounts.length;
-    const totalRangeTime = rangeTime * amount;
+    const numberOfMounts = mounts.length;
+    const totalRangeTime = rangeTime * numberOfMounts;
     const newMountListValue = require("libs/newMountListValue");
     const newBaseListValue = require("libs/newBaseListValue");
     
@@ -72,33 +73,36 @@ module.exports = {
         this.outline = Core.atlas.find(this.name + "-outline");
         this.baseTurret = Core.atlas.find(this.name + "-baseTurret");
         this.turrets = [];
-        for(var i = 0; i < amount; i++){
-          //[Sprite, Outline, Heat, Fade Mask]
-          var sprites = [Core.atlas.find(mounts[i].name), 
-          Core.atlas.find(mounts[i].name + "-outline"),
-          Core.atlas.find(mounts[i].name + "-heat"), 
-          Core.atlas.find(mounts[i].name + "-mask")];
-          this.turrets[i] = sprites;
-        }
-        
         this.loopSounds = [];
-        for(var i = 0; i < amount; i++){
-          this.loopSounds[i] = (mounts[i].loopSound == Sounds.none ? null : new SoundLoop(mounts[i].loopSound, mounts[i].loopVolume));
+        for(var i = 0; i < numberOfMounts; i++){
+          var curMount = mounts[i];
+          
+          //[Sprite, Outline, Heat, Fade Mask, Full]
+          var sprites = [Core.atlas.find(mounts[i].name), 
+          Core.atlas.find(curMount.name + "-outline"),
+          Core.atlas.find(curMount.name + "-heat"), 
+          Core.atlas.find(curMount.name + "-mask"),
+          Core.atlas.find(curMount.name + "-full")];
+          this.turrets[i] = sprites;
+          
+          this.loopSounds[i] = (curMount.loopSound == Sounds.none ? null : new SoundLoop(curMount.loopSound, curMount.loopVolume));
         }
       },
       drawPlace(x ,y ,rotation, valid){
         this.super$drawPlace(x, y, rotation, valid);
-        for(var i = 0; i < amount; i++){
+        for(var i = 0; i < numberOfMounts; i++){
+          var curMount = mounts[i];
           var fade = Mathf.curve(Time.time % totalRangeTime, rangeTime * i, rangeTime * i + fadeTime) - Mathf.curve(Time.time % totalRangeTime, rangeTime * (i + 1) - fadeTime, rangeTime * (i + 1));
-          var tX = x * Vars.tilesize + this.offset + mounts[i].x;
-          var tY = y * Vars.tilesize + this.offset + mounts[i].y;
-          //Drawf.dashCircle(Loc[0], Loc[1], mounts[i].range, Pal.placing); //I already know this'll be terrible in game.
+          
+          var tX = x * Vars.tilesize + this.offset + curMount.x;
+          var tY = y * Vars.tilesize + this.offset + curMount.y;
+          //Drawf.dashCircle(Loc[0], Loc[1], curMount.range, Pal.placing); //I already know this'll be terrible in game.
           Lines.stroke(3, Pal.gray);
           Draw.alpha(fade);
-          Lines.dashCircle(tX, tY, mounts[i].range);
+          Lines.dashCircle(tX, tY, curMount.range);
           Lines.stroke(1, Vars.player.team().color);
           Draw.alpha(fade);
-          Lines.dashCircle(tX, tY, mounts[i].range);
+          Lines.dashCircle(tX, tY, curMount.range);
           
           Draw.color(Vars.player.team().color, fade);
           Draw.rect(this.turrets[i][3], tX, tY);
@@ -114,23 +118,7 @@ module.exports = {
         this.stats.remove(Stat.shootRange);
         this.stats.remove(Stat.inaccuracy);
         this.stats.remove(Stat.reload);
-        
         this.stats.remove(Stat.ammo);
-        const ammoStat = new StatValue({
-          display(table){
-            table.row();
-            table.image(ammoItem.icon(Cicon.medium)).size(8 * 4).padRight(4).right().top();
-            table.add(ammoItem.localizedName).padRight(10).left().top();
-            table.table(Tex.underline, b => {
-              b.left().defaults().padRight(3).left();
-              
-              b.add(Core.bundle.format("bullet.multiplier", mainBullet.ammoMultiplier));
-            }).padTop(-9).left();
-            table.row();
-          }
-        });
-        this.stats.add(Stat.ammo, ammoStat);
-        
         this.stats.remove(Stat.targetsAir);
         this.stats.remove(Stat.targetsGround);
         
@@ -163,7 +151,26 @@ module.exports = {
         });
         
         this.stats.add(Stat.weapons, wT);
-      }
+      }/*,
+      setBars(bars){
+        bars.add("health", entity => new Bar("stat.health", Pal.health, entity.health).blink(Color.white));
+        if(multiTur.hasLiquids){
+          var current;
+          if(multiTur.consumes.has(ConsumeType.liquid) && multiTur.consumes.get(ConsumeType.liquid) instanceof ConsumeLiquid){
+            var liquid = consumes.get(ConsumeType.liquid).liquid;
+            var current = entity => liquid;
+          }else{
+            var current = entity => entity.liquids == null ? Liquids.water : entity.liquids.current();
+          }
+          bars.add("liquid", entity => new Bar(() => entity.liquids.get(current.get(entity)) <= 0.001 ? Core.bundle.get("bar.liquid") : current.get(entity).localizedName, () => current.get(entity).barColor(), () => entity == null || entity.liquids == null ? 0 : entity.liquids.get(current.get(entity)) / multiTur.liquidCapacity));
+        }
+        bars.image(multiTur.baseTurret).size(3*8).left.top;
+        bars.add("ammo", entity => new Bar(() => entity.totalAmmo / multiTur.maxAmmo));
+        for(var i = 0; i < numberOfMounts; i++){
+          bars.image(multiTur.turrets[i][4]).size(3*8).left.top;
+          bars.add("ammo", entity => new Bar(() => entity._totalAmmos[i] / mounts[i].maxAmmo));
+        }
+      }*/
     });
     
     multiTur.ammo(ammoItem, mainBullet);
@@ -181,7 +188,10 @@ module.exports = {
           this._targets = [];
           this._targetPoss = [];
           this._wasShootings = [];
-          for(var i = 0; i < amount; i++){
+          this._totalAmmos = [];
+          this._ammos = [];
+          this._ammoTypes = [];
+          for(var i = 0; i < numberOfMounts; i++){
             this._reloads[i] = 0;
             this._heats[i] = 0;
             this._recoils[i] = 0;
@@ -190,20 +200,24 @@ module.exports = {
             this._targets[i] = null;
             this._targetPoss[i] = new Vec2();
             this._wasShootings[i] = false;
+            this._totalAmmos[i] = 0;
+            this._ammos[i] = new Seq();
+            this._ammoTypes[i] = new ObjectMap;
           }
         },
         drawSelect(){
           this.super$drawSelect();
-          for(var i = 0; i < amount; i++){
+          for(var i = 0; i < numberOfMounts; i++){
             var fade = Mathf.curve(Time.time % totalRangeTime, rangeTime * i, rangeTime * i + fadeTime) - Mathf.curve(Time.time % totalRangeTime, rangeTime * (i + 1) - fadeTime, rangeTime * (i + 1));
             let loc = this.mountLocations(i);
-            //Drawf.dashCircle(Loc[0], Loc[1], mounts[i].range, Pal.placing); //I already know this'll be terrible in game.
+            var curMount = mounts[i];
+            
             Lines.stroke(3, Pal.gray);
             Draw.alpha(fade);
-            Lines.dashCircle(loc[0], loc[1], mounts[i].range);
+            Lines.dashCircle(loc[0], loc[1], curMount.range);
             Lines.stroke(1, this.team.color);
             Draw.alpha(fade);
-            Lines.dashCircle(loc[0], loc[1], mounts[i].range);
+            Lines.dashCircle(loc[0], loc[1], curMount.range);
           
             Draw.color(this.team.color, fade);
             Draw.rect(multiTur.turrets[i][3], loc[2], loc[3], this._rotations[i] - 90);
@@ -211,11 +225,13 @@ module.exports = {
           }
         },
         mountLocations(mount){
-          Tmp.v1.trns(this.rotation - 90, mounts[mount].x, mounts[mount].y - this.recoil);
+          var curMount = mounts[mount];
+          
+          Tmp.v1.trns(this.rotation - 90, curMount.x, curMount.y - this.recoil);
           Tmp.v1.add(this.x, this.y);
           Tmp.v2.trns(this._rotations[mount], -this._recoils[mount]);
-          var i = (this._shotCounters[mount] % mounts[mount].barrels) - (mounts[mount].barrels - 1) / 2;
-          Tmp.v3.trns(this._rotations[mount] - 90, mounts[mount].shootX + mounts[mount].barrelSpacing * i + mounts[mount].xRand, mounts[mount].shootY + mounts[mount].yRand);
+          var i = (this._shotCounters[mount] % curMount.barrels) - (curMount.barrels - 1) / 2;
+          Tmp.v3.trns(this._rotations[mount] - 90, curMount.shootX + curMount.barrelSpacing * i + curMount.xRand, curMount.shootY + curMount.yRand);
           
           var x = Tmp.v1.x;
           var y = Tmp.v1.y;
@@ -245,13 +261,14 @@ module.exports = {
             Draw.color();
           }
           
-          for(var i = 0; i < amount; i++){
+          for(var i = 0; i < numberOfMounts; i++){
             let loc = this.mountLocations(i);
+            var curMount = mounts[i];
             
-            Drawf.shadow(multiTur.turrets[i][0], loc[2] - mounts[i].elevation, loc[3] - mounts[i].elevation, this._rotations[i] - 90);
+            Drawf.shadow(multiTur.turrets[i][0], loc[2] - curMount.elevation, loc[3] - curMount.elevation, this._rotations[i] - 90);
           }
           
-          for(var i = 0; i < amount; i++){
+          for(var i = 0; i < numberOfMounts; i++){
             let loc = this.mountLocations(i);
             
             Draw.rect(multiTur.turrets[i][1], loc[2], loc[3], this._rotations[i] - 90);
@@ -269,7 +286,7 @@ module.exports = {
         update(){
           this.super$update();
           
-          for(var i = 0; i < amount; i++){
+          for(var i = 0; i < numberOfMounts; i++){
             if(!Vars.headless){
               let loc = this.mountLocations(i);
                 
@@ -282,24 +299,31 @@ module.exports = {
         updateTile(){
           this.super$updateTile();
           
-          for(var i = 0; i < amount; i++){
+          for(var i = 0; i < numberOfMounts; i++){
+            var curMount = mounts[i];
+            
             this._wasShootings[i] = false;
-            this._recoils[i] = Mathf.lerpDelta(this._recoils[i], 0, mounts[i].restitution);
-            this._heats[i] = Mathf.lerpDelta(this._heats[i], 0, mounts[i].cooldown);
+            this._recoils[i] = Mathf.lerpDelta(this._recoils[i], 0, curMount.restitution);
+            this._heats[i] = Mathf.lerpDelta(this._heats[i], 0, curMount.cooldown);
             
             if(!this.validateMountTarget(i)) this._targets[i] = null;
+            
+            /*print(curMount.name + " ammo amount: " + this._totalAmmos[i]);
+            print(curMount.name + " ammo max: " + curMount.maxAmmo);
+            var a = this._totalAmmos[i] / curMount.maxAmmo;
+            print(curMount.name + " ammo amount percent: " + a);*/
           }
           
           if(this.hasAmmo()){
             if(this.timer.get(multiTur.mountTimer, multiTur.mountInterval)){
-              for(var i = 0; i < amount; i++){
+              for(var i = 0; i < numberOfMounts; i++){
                 let loc = this.mountLocations(i);
                 
                 this._targets[i] = this.findMountTargets(i);
               }
             }
             
-            for(var i = 0; i < amount; i++){
+            for(var i = 0; i < numberOfMounts; i++){
               let loc = this.mountLocations(i);
               
               if(this.validateMountTarget(i)){
@@ -347,7 +371,7 @@ module.exports = {
             var allRot = speed;
           }
           
-          for(var i = 0; i < amount; i++){
+          for(var i = 0; i < numberOfMounts; i++){
             this._rotations[i] = (this._rotations[i] + allRot) % 360;;
           }
         },
@@ -356,11 +380,12 @@ module.exports = {
         },
         findMountTargets(mount){
           let loc = this.mountLocations(mount);
+          var curMount = mounts[mount];
           
-          if(mounts[mount].targetAir && !mounts[mount].targetGround){
-            return Units.bestEnemy(this.team, loc[0], loc[1], mounts[mount].range, e => !e.dead && !e.isGrounded(), mounts[mount].unitSort);
+          if(curMount.targetAir && !curMount.targetGround){
+            return Units.bestEnemy(this.team, loc[0], loc[1], curMount.range, e => !e.dead && !e.isGrounded(), curMount.unitSort);
           }else{
-            return Units.bestTarget(this.team, loc[0], loc[1], mounts[mount].range, e => !e.dead && (e.isGrounded() || mounts[mount].targetAir) && (!e.isGrounded() || mounts[mount].targetGround), b => true, mounts[mount].unitSort);
+            return Units.bestTarget(this.team, loc[0], loc[1], curMount.range, e => !e.dead && (e.isGrounded() || curMount.targetAir) && (!e.isGrounded() || curMount.targetGround), b => true, curMount.unitSort);
           }
         },
         validateMountTarget(mount){
@@ -369,8 +394,8 @@ module.exports = {
           return !Units.invalidateTarget(this._targets[mount], this.team, loc[0], loc[1]) || this.isControlled() || this.logicControlled();
         },
         mountTargetPosition(mount, pos, x, y){
-          if(!this.hasAmmo()) return;
-          var bullet = mounts[mount].bullet;
+          if(!this.mountHasAmmo()) return;
+          var bullet = this.mountPeekAmmo(mount);
           var speed = bullet.speed;
           //slow bullets never intersect
           if(speed < 0.1) speed = 9999999;
@@ -382,106 +407,249 @@ module.exports = {
           }
         },
         updateMountShooting(mount){
+          var type = this.mountPeekAmmo(mount);
           if(this._reloads[mount] >= mounts[mount].reloadTime){
-            const type = mounts[mount].bullet;
-            
             this.mountShoot(mount, type);
             
             this._reloads[mount] = 0;
           }else{
-            this._reloads[mount] += this.delta() * mounts[mount].bullet.reloadMultiplier * this.baseReloadSpeed();
+            this._reloads[mount] += this.delta() * type.reloadMultiplier * this.baseReloadSpeed();
           }
         },
         updateCooling(){
           this.super$updateCooling();
           
-          var maxUsed = multiTur.consumes.get(ConsumeType.liquid).amount / amount;
+          var maxUsed = multiTur.consumes.get(ConsumeType.liquid).numberOfMounts / numberOfMounts;
 
           var liquid = this.liquids.current();
           
-          for(var i = 0; i < amount; i++){
-            var used = Math.min(Math.min(this.liquids.get(liquid), maxUsed * Time.delta), Math.max(0, ((mounts[i].reloadTime - this._reloads[i]) / multiTur.coolantMultiplier) / liquid.heatCapacity)) * this.baseReloadSpeed();
+          for(var i = 0; i < numberOfMounts; i++){
+            var curMount = mounts[i];
+            
+            var used = Math.min(Math.min(this.liquids.get(liquid), maxUsed * Time.delta), Math.max(0, ((curMount.reloadTime - this._reloads[i]) / multiTur.coolantMultiplier) / liquid.heatCapacity)) * this.baseReloadSpeed();
             this._reloads[i] += used * liquid.heatCapacity * multiTur.coolantMultiplier;
             
             this.liquids.remove(liquid, used);
             
             let loc = this.mountLocations(i);
             
-            if(Mathf.chance(0.06 / amount * used)){
-              mounts[i].coolEffect.at(loc[0] + Mathf.range(mounts[i].width), loc[1] + Mathf.range(mounts[i].height));
+            if(Mathf.chance(0.06 / numberOfMounts * used)){
+              curMount.coolEffect.at(loc[0] + Mathf.range(curMount.width), loc[1] + Mathf.range(curMount.height));
             }
           }
         },
         mountShoot(mount, type){
-          for(var j = 0; j < mounts[mount].shots; j++){
+          var cMount = mounts[mount];
+          for(var j = 0; j < cMount.shots; j++){
             const spreadAmount = j;
-            Time.run(mounts[mount].burstSpacing * j, () => {
+            const curMount = mounts[mount];
+            Time.run(cMount.burstSpacing * j, () => {
               if(!this.isValid() || !this.hasAmmo()) return;
               
               let loc = this.mountLocations(mount);
               
-              if(mounts[mount].shootShake > 0){
-                Effect.shake(mounts[mount].shootShake, mounts[mount].shootShake, loc[4], loc[y]);
+              if(curMount.shootShake > 0){
+                Effect.shake(curMount.shootShake, curMount.shootShake, loc[4], loc[y]);
               }
               
-              var fshootEffect = mounts[mount].shootEffect == Fx.none ? type.shootEffect : mounts[mount].shootEffect;
-              var fsmokeEffect = mounts[mount].smokeEffect == Fx.none ? type.smokeEffect : mounts[mount].smokeEffect;
+              var fshootEffect = curMount.shootEffect == Fx.none ? type.shootEffect : curMount.shootEffect;
+              var fsmokeEffect = curMount.smokeEffect == Fx.none ? type.smokeEffect : curMount.smokeEffect;
 
               fshootEffect.at(loc[4], loc[5], this._rotations[mount]);
               fsmokeEffect.at(loc[4], loc[5], this._rotations[mount]);
               
-              mounts[mount].shootSound.at(loc[4], loc[5], Mathf.random(0.9, 1.1));
+              curMount.shootSound.at(loc[4], loc[5], Mathf.random(0.9, 1.1));
               
-              this._recoils[mount] = mounts[mount].recoilAmount;
+              this._recoils[mount] = curMount.recoilAmount;
               this._heats[mount] = 1;
               
               this.mountUseAmmo(mount);
-              if(mounts[mount].loopSound != Sounds.none){
+              if(curMount.loopSound != Sounds.none){
                 multiTur.loopSounds[mount].update(loc[4], loc[5], true);
               }
               
-              var velScl = 1 + Mathf.range(mounts[mount].velocityInaccuracy);
-              var lifeScl = type.scaleVelocity ? Mathf.clamp(Mathf.dst(loc[4], loc[5], this._targetPoss[mount].x, this._targetPoss[mount].y) / type.range(), mounts[mount].minRange / type.range(), mounts[mount].range / type.range()) : 1;
-              var angle = this._rotations[mount] + Mathf.range(mounts[mount].inaccuracy + type.inaccuracy) + (spreadAmount - (mounts[mount].shots / 2)) * mounts[mount].spread;
+              var velScl = 1 + Mathf.range(curMount.velocityInaccuracy);
+              var lifeScl = type.scaleVelocity ? Mathf.clamp(Mathf.dst(loc[4], loc[5], this._targetPoss[mount].x, this._targetPoss[mount].y) / type.range(), curMount.minRange / type.range(), curMount.range / type.range()) : 1;
+              var angle = this._rotations[mount] + Mathf.range(curMount.inaccuracy + type.inaccuracy) + (spreadAmount - (curMount.shots / 2)) * curMount.spread;
               
               type.create(this, this.team, loc[4], loc[5], angle, velScl, lifeScl);
               
-              if(mounts[mount].sequential){
+              if(curMount.sequential){
                 this._shotCounters[mount]++;
               }
             });
           }
           
-          if(!mounts[mount].sequential){
+          if(!curMount.sequential){
             this._shotCounters[mount]++;
           }
         },
         mountUseAmmo(mount){
-          if(this.cheating()) return this.peekAmmo();
+          if(this.cheating()) return this.mountPeekAmmo(mount);
+          var ammo = this._ammos[mount];
+          var curMount = mounts[mount];
 
-          const entry = this.ammo.peek();
-          entry.amount -= mounts[mount].ammoPerShot;
-          if(entry.amount <= 0) this.ammo.pop();
-          this.totalAmmo -= mounts[mount].ammoPerShot;
-          this.totalAmmo = Mathf.maxZero(this.totalAmmo);
+          const entry = ammo.peek();
+          entry.amount -= curMount.ammoPerShot;
+          if(entry.amount <= 0) ammo.pop();
+          this._totalAmmos[mount] -= curMount.ammoPerShot;
+          this._totalAmmos[mount] = Mathf.maxZero(this._totalAmmos[mount]);
           this.mountEjectEffects(mount);
           return entry.type();
         },
         mountEjectEffects(mount){
           if(!this.isValid()) return;
+          var curMount = mounts[mount];
           
-          var side = mounts[mount].altEject ? Mathf.signs[this._shotCounters[mount] % 2] : mounts[mount].ejectRight;
+          var side = curMount.altEject ? Mathf.signs[this._shotCounters[mount] % 2] : curMount.ejectRight;
           let loc = this.mountLocations(mount);
           
-          mounts[mount].ejectEffect.at(loc[4], loc[5], this._rotations[mount] * side);
+          curMount.ejectEffect.at(loc[4], loc[5], this._rotations[mount] * side);
         },
         mountLoopSound(mount){
           return this._wasShootings[mount];
+        },
+        acceptItem(source, item){
+          var type = multiTur.ammoTypes.get(item);
+          var accept = true;
+          
+          if(type != null){
+            accept = this.totalAmmo + type.ammoMultiplier <= multiTur.maxAmmo;
+          }
+          
+          if(accept){
+            for(var i = 0; i < numberOfMounts; i++){
+              var curMount = mounts[i];
+              var type = curMount.ammoTypes.get(item);
+              if(type != null){
+                accept = this._totalAmmos[i] + type.ammoMultiplier <= curMount.maxAmmo;
+              }
+              if(!accept){
+                continue;
+              }
+            }
+          }
+          
+          return accept;
+        },
+        acceptStack(item, amount, source){
+          var type = multiTur.ammoTypes.get(item);
+          var accept = 0;
+          
+          if(type != null){
+            accept = Math.min((multiTur.maxAmmo - this.totalAmmo) / type.ammoMultiplier, amount);
+          }else{
+            accept = amount;
+          }
+          
+          for(var i = 0; i < numberOfMounts; i++){
+            var curMount = mounts[i];
+            var type = curMount.ammoTypes.get(item);
+            if(type != null){
+              accept = Math.min(accept, (curMount.maxAmmo - this._totalAmmos[i]) / type.ammoMultiplier);
+            }
+          }
+          
+          return accept;
+        },
+        handleItem(source, item){
+          //Copy vanilla code over.
+          if(item == Items.pyratite){
+            Events.fire(Trigger.flameAmmo);
+          }
+
+          var type = multiTur.ammoTypes.get(item);
+          if(type != null){
+            this.totalAmmo += type.ammoMultiplier;
+
+            //find ammo entry by type
+            for(var i = 0; i < this.ammo.size; i++){
+              var entry = this.ammo.get(i);
+
+              //if found, put it to the right
+              if(entry.item == item){
+                entry.amount += type.ammoMultiplier;
+                this.ammo.swap(i, this.ammo.size - 1);
+                continue;
+              }
+            }
+            
+            /*var a = new ObjectMap();
+            a.put(0, item);
+            a.put(1, type.ammoMultiplier);
+            a.put(2, type);*/
+            
+            var a = new ItemTurret.ItemEntry;
+            a.item = item;
+            a.amount = type.ammoMultiplier;
+            
+            //must not be found
+            this.ammo.add(a);
+          }
+          
+          //Mount ammos;
+          for(var i = 0; i < numberOfMounts; i++){
+            var type = mounts[i].ammoTypes.get(item);
+            if(type != null){
+              this._totalAmmos[i] += type.ammoMultiplier;
+              var ammo = this._ammos[i];
+              
+              //find ammo entry by type
+              for(var j = 0; j < ammo.size; j++){
+                var entry = ammo.get(j);
+
+                //if found, put it to the right
+                if(entry.item == item){
+                  entry.amount += type.ammoMultiplier;
+                  ammo.swap(j, ammo.size - 1);
+                  continue;
+                }
+              }
+              
+              //must not be found
+              //ammo.add(new ItemTurret.ItemEntry(item, type.ammoMultiplier));
+            }
+          }
+        },
+        mountPeekAmmo(mount){
+          return this._ammos[mount].peek().type();
+        },
+        mountHasAmmo(mount){
+          var ammo = this._ammos[mount].peek();
+          var curMount = mounts[mount];
+          if(ammo.size >= 2 && ammo.peek().amount < curMount.ammoPerShot){
+            ammo.pop();
+          }
+          return ammo.size > 0 && ammo.peek().amount >= curMount.ammoPerShot;
+        },
+        displayBars(bars){
+          //bars.image(multiTur.baseTurret).size(3*8).left.top;
+          //bars.row();
+          this.super$displayBars(bars);
+          bars.row();
+          for(var i = 0; i < numberOfMounts; i++){
+            bars.image(multiTur.turrets[i][4]).size(3 * 8).left.top;
+            bars.add(new Bar("stat.ammo", Pal.ammo, () => this._totalAmmos[i] / mounts[i].maxAmmo)).growX();
+            bars.row();
+          }
         }
       });
       ent.setEffs();
       return ent;
     }
+    multiTur.BaseEntry = extend(Turret.AmmoEntry, {
+      /*entry(item, amount){
+        this.item = item;
+        this.amount = amount;
+      },
+      type(){
+        return multiTur.ammoTypes.get(item);
+      }*/
+    });
+    multiTur.MountEntry = extend(Turret.AmmoEntry, {
+      
+    });
+    
     return multiTur;
   }
 };

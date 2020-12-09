@@ -29,8 +29,11 @@ module.exports = (weapons) => {
           this.sep(w, "[lightgray]" + Stat.targetsAir.localized() + ": [white]" + (!weapon.targetAir ? Core.bundle.get("no") : Core.bundle.get("yes")));
           this.sep(w, "[lightgray]" + Stat.targetsGround.localized() + ": [white]" + (!weapon.targetGround ? Core.bundle.get("no") : Core.bundle.get("yes")));
           
-          const b = newAmmoListValue(weapon.bullet);
-          b.display(w);
+          //const b = newAmmoListValue(weapon.bullet);
+        }).padTop(-15).left();
+        table.table(Tex.underline, a =>{
+          const b = new AmmoListValue(weapon.ammoTypes);
+          b.display(a);
         }).padTop(-15).left();
         table.row();
       }
